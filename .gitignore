@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Zugangsdaten und lokale Konfiguration
+.env
+.env.*
+!.env.example
+
+# Node.js
+node_modules/
+dist/
+
+# Lokale Datenbank-Backups
+*.sql.gz
+*.dump
+*.backup
+*.pem
+*.key
+*.p12
+*.pfx
