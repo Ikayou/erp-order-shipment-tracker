@@ -33,6 +33,37 @@ tbody tr:hover {
   background-color: #f8fafc;
 }
 
+.order-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+
+.order-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.delivery-row > td {
+  background-color: #f8fafc;
+}
+
+.delivery-history {
+  overflow-x: auto;
+}
+
+.delivery-history h2 {
+  margin: 0 0 0.75rem;
+  color: inherit;
+  font-size: 1.125rem;
+}
+
 [role="alert"] {
   color: #b91c1c;
 }

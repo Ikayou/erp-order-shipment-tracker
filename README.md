@@ -4,7 +4,7 @@
 
 Dieses Projekt dient dazu, den Umgang mit einem ERP-System am Beispiel von ERPNext zu üben. Das Ziel ist, Kundenaufträge über die ERPNext-API abzurufen, die Daten mit Python zu filtern und die Ergebnisse in einer Weboberfläche mit React und TypeScript darzustellen.
 
-Die Anwendung zeigt bestellte, gelieferte und offene Mengen pro Auftragsposition. Python importiert die Auftragsdaten nach PostgreSQL. FastAPI berechnet die offene Menge in der Datenbankabfrage und stellt die Positionen über `/api/orders` bereit. In der Oberfläche lassen sich die Positionen durchsuchen, auf offene Mengen eingrenzen und Entwürfe ausblenden.
+Die Anwendung zeigt bestellte, gelieferte und offene Mengen pro Auftragsposition. Python importiert Aufträge und gebuchte Lieferpositionen nach PostgreSQL. FastAPI berechnet die offene Menge in der Datenbankabfrage und stellt die Positionen über `/api/orders` bereit. In der Oberfläche lassen sich die Positionen durchsuchen, auf offene Mengen eingrenzen und Entwürfe ausblenden. Ein Klick auf die Auftragsnummer öffnet die Lieferhistorie mit Lieferscheinnummer, Buchungsdatum, Artikel, Menge und Einheit.
 
 ## Entwicklungsumgebung
 
@@ -19,7 +19,7 @@ im Terminal der SSH-Sitzung auf dem Ubuntu-Server ausgeführt.
 - Python 3 und eine virtuelle Umgebung
 - Docker mit dem Compose-Plugin
 - Node.js 20 ab 20.19 oder Node.js ab 22.12 sowie npm
-- Zugang zu einer ERPNext-Instanz und API-Zugangsdaten mit Leserechten für Kundenaufträge
+- Zugang zu einer ERPNext-Instanz und API-Zugangsdaten mit Leserechten für Kundenaufträge (`Sales Order`) und Lieferscheine (`Delivery Note`)
 
 ## Einmalige Einrichtung
 
@@ -74,6 +74,12 @@ timeout 60s bash -c 'until docker compose exec -T postgres sh -c "pg_isready -q 
 ```
 
 Führe die Schemaeinrichtung beim Anlegen einer neuen Datenbank aus.
+Für eine bestehende Datenbank wende nach dem Update einmal `schema.sql` erneut an, um die Tabelle für die Lieferhistorie anzulegen:
+
+```bash
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d erp_tracker' < schema.sql
+```
+
 PostgreSQL ist auf dem Ubuntu-Server über `127.0.0.1:5433` erreichbar.
 
 Installiere anschließend die Frontend-Abhängigkeiten im Unterordner `frontend/`.
@@ -135,6 +141,7 @@ set +a
 python sync_order.py
 ```
 
-Lade anschließend die Seite im Browser neu. Im selben Terminal kannst du mit
+Lade anschließend die Seite im Browser neu. Klicke auf eine Auftragsnummer, um
+die gebuchten Lieferpositionen dieses Auftrags zu sehen. Im selben Terminal kannst du mit
 `python list_orders.py` Aufträge aus ERPNext auflisten oder mit
 `python get_order.py` den in `ERP_ORDER_NUMBER` gesetzten Auftrag abrufen.

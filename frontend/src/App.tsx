@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import "./App.css"
 
 type OrderItem = {
+  item_id: string
   order_number: string
   customer_name: string
   status: string
@@ -12,9 +13,94 @@ type OrderItem = {
   remaining_quantity: number
 }
 
+type DeliveryItem = {
+  delivery_item_id: string
+  delivery_note_number: string
+  posting_date: string
+  item_name: string
+  quantity: number
+  unit: string
+}
+
+type DeliveryResult = { items: DeliveryItem[] } | { error: string }
+
 const statusLabels: Record<string, string> = {
   Draft: "Entwurf",
   "To Deliver and Bill": "Auszuliefern und abzurechnen",
+}
+
+const postingDateFormat = new Intl.DateTimeFormat("de-DE", { timeZone: "UTC" })
+
+function DeliveryHistory({ orderNumber }: { orderNumber: string }) {
+  const [result, setResult] = useState<DeliveryResult | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function loadDeliveries() {
+      try {
+        const response = await fetch(
+          `/api/orders/${encodeURIComponent(orderNumber)}/deliveries`,
+          { signal: controller.signal },
+        )
+        if (!response.ok) {
+          throw new Error("Lieferhistorie konnte nicht geladen werden.")
+        }
+
+        const items: DeliveryItem[] = await response.json()
+        if (!controller.signal.aborted) {
+          setResult({ items })
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setResult({ error: "Lieferhistorie konnte nicht geladen werden." })
+        }
+      }
+    }
+
+    void loadDeliveries()
+    return () => controller.abort()
+  }, [orderNumber])
+
+  return (
+    <section id="delivery-history" className="delivery-history" aria-labelledby="delivery-history-title">
+      <h2 id="delivery-history-title">Lieferhistorie für {orderNumber}</h2>
+      {!result && <p role="status">Lieferhistorie wird geladen …</p>}
+      {result && "error" in result && <p role="alert">{result.error}</p>}
+      {result && "items" in result && (
+        result.items.length === 0 ? (
+          <p>Keine gebuchten Lieferungen vorhanden.</p>
+        ) : (
+          <table aria-labelledby="delivery-history-title">
+            <thead>
+              <tr>
+                <th scope="col">Lieferschein</th>
+                <th scope="col">Buchungsdatum</th>
+                <th scope="col">Artikel</th>
+                <th scope="col">Menge</th>
+                <th scope="col">Einheit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.items.map((item) => (
+                <tr key={item.delivery_item_id}>
+                  <td>{item.delivery_note_number}</td>
+                  <td>
+                    <time dateTime={item.posting_date}>
+                      {postingDateFormat.format(new Date(item.posting_date))}
+                    </time>
+                  </td>
+                  <td>{item.item_name}</td>
+                  <td>{item.quantity}</td>
+                  <td>{item.unit}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      )}
+    </section>
+  )
 }
 
 function App() {
@@ -24,6 +110,7 @@ function App() {
   const [search, setSearch] = useState("")
   const [hideDrafts, setHideDrafts] = useState(false)
   const [onlyOpen, setOnlyOpen] = useState(false)
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadOrders() {
@@ -45,19 +132,21 @@ function App() {
 
     loadOrders()
   }, [])
+
   const filteredItems = items.filter((item) => {
-  const query = search.trim().toLowerCase()
+    const query = search.trim().toLowerCase()
 
-  const matchesSearch =
-    item.order_number.toLowerCase().includes(query) ||
-    item.customer_name.toLowerCase().includes(query)
+    const matchesSearch =
+      item.order_number.toLowerCase().includes(query) ||
+      item.customer_name.toLowerCase().includes(query)
 
-  const matchesDraftFilter = !hideDrafts || item.status !== "Draft"
+    const matchesDraftFilter = !hideDrafts || item.status !== "Draft"
 
-  const matchesOpenFilter = !onlyOpen || item.remaining_quantity > 0
+    const matchesOpenFilter = !onlyOpen || item.remaining_quantity > 0
 
-return matchesSearch && matchesDraftFilter && matchesOpenFilter
-})
+    return matchesSearch && matchesDraftFilter && matchesOpenFilter
+  })
+
   return (
     <main>
       <h1>Auftragspositionen</h1>
@@ -110,17 +199,40 @@ return matchesSearch && matchesDraftFilter && matchesOpenFilter
           </thead>
 
           <tbody>
-            {filteredItems.map((item) => (
-              <tr key={`${item.order_number}-${item.item_code}`}>
-                <td>{item.order_number}</td>
-                <td>{item.customer_name}</td>
-                <td>{statusLabels[item.status] ?? item.status}</td>
-                <td>{item.item_name}</td>
-                <td>{item.ordered_quantity}</td>
-                <td>{item.delivered_quantity}</td>
-                <td>{item.remaining_quantity}</td>
-              </tr>
-            ))}
+            {filteredItems.map((item) => {
+              const expanded = item.item_id === expandedItemId
+
+              return (
+                <Fragment key={item.item_id}>
+                  <tr>
+                    <td>
+                      <button
+                        type="button"
+                        className="order-link"
+                        aria-expanded={expanded}
+                        aria-controls={expanded ? "delivery-history" : undefined}
+                        onClick={() => setExpandedItemId(expanded ? null : item.item_id)}
+                      >
+                        {item.order_number}
+                      </button>
+                    </td>
+                    <td>{item.customer_name}</td>
+                    <td>{statusLabels[item.status] ?? item.status}</td>
+                    <td>{item.item_name}</td>
+                    <td>{item.ordered_quantity}</td>
+                    <td>{item.delivered_quantity}</td>
+                    <td>{item.remaining_quantity}</td>
+                  </tr>
+                  {expanded && (
+                    <tr className="delivery-row">
+                      <td colSpan={7}>
+                        <DeliveryHistory orderNumber={item.order_number} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
       )}

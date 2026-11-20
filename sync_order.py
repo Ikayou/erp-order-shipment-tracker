@@ -26,29 +26,30 @@ def get_from_erpnext(url):
         return json.load(response, parse_float=Decimal)["data"]
 
 
-def get_order_numbers():
-    """Auftragsnummern seitenweise aus ERPNext laden."""
-    order_numbers = []
+def get_documents(doctype, filters=None):
+    """Dokumente samt Positionen seitenweise aus ERPNext laden."""
+    resource_url = f"{API_BASE}/{quote(doctype, safe='')}"
+    documents = []
     offset = 0
 
     while True:
-        parameters = urlencode({
+        parameters = {
             "limit_start": offset,
             "limit_page_length": PAGE_SIZE,
             "order_by": "name asc",
-        })
-        url = f"{API_BASE}/Sales%20Order?{parameters}"
-        page = get_from_erpnext(url)
+        }
+        if filters is not None:
+            parameters["filters"] = json.dumps(filters)
+        page = get_from_erpnext(f"{resource_url}?{urlencode(parameters)}")
 
-        for order in page:
-            order_numbers.append(order["name"])
+        for entry in page:
+            name = quote(entry["name"], safe="")
+            documents.append(get_from_erpnext(f"{resource_url}/{name}"))
 
         if len(page) < PAGE_SIZE:
-            break
+            return documents
 
         offset += PAGE_SIZE
-
-    return order_numbers
 
 
 def save_order(connection, order):
@@ -94,24 +95,71 @@ def save_order(connection, order):
         )
 
 
-order_numbers = get_order_numbers()
+def get_delivery_rows(deliveries, order_items):
+    """Lieferpositionen den importierten Auftragspositionen zuordnen."""
+    rows = []
 
-# Erst alle Aufträge abrufen, dann die Datenbank aktualisieren
-orders = []
+    for delivery in deliveries:
+        if delivery["docstatus"] != 1:
+            continue
 
-for order_number in order_numbers:
-    encoded_number = quote(order_number, safe="")
-    url = f"{API_BASE}/Sales%20Order/{encoded_number}"
-    orders.append(get_from_erpnext(url))
+        for item in delivery["items"]:
+            order_item_id = item.get("so_detail")
+            order_number = order_items.get(order_item_id)
+            if order_number is None or order_number != item.get("against_sales_order"):
+                continue
 
-with psycopg.connect(
-    host="127.0.0.1",
-    port=5433,
-    dbname="erp_tracker",
-    user=os.environ["DB_USER"],
-    password=os.environ["DB_PASSWORD"],
-) as connection:
-    for order in orders:
-        save_order(connection, order)
+            rows.append((
+                item["name"],
+                order_item_id,
+                delivery["name"],
+                delivery["posting_date"],
+                item["qty"],
+                item["uom"],
+            ))
 
-print(f"Synchronisierte Aufträge: {len(orders)}")
+    return rows
+
+
+def sync_orders():
+    with psycopg.connect(
+        host="127.0.0.1",
+        port=5433,
+        dbname="erp_tracker",
+        user=os.environ["DB_USER"],
+        password=os.environ["DB_PASSWORD"],
+    ) as connection:
+        # Gleichzeitige Importe nacheinander ausführen. Abfragen bleiben möglich.
+        connection.execute("LOCK TABLE delivery_items IN SHARE ROW EXCLUSIVE MODE")
+        orders = get_documents("Sales Order")
+        deliveries = get_documents("Delivery Note", [["docstatus", "=", 1]])
+        order_items = {
+            item["name"]: order["name"]
+            for order in orders
+            for item in order["items"]
+        }
+        delivery_rows = get_delivery_rows(deliveries, order_items)
+
+        # Die Lieferpositionen vor den Auftragspositionen ersetzen, da sie darauf verweisen.
+        connection.execute("DELETE FROM delivery_items")
+        for order in orders:
+            save_order(connection, order)
+
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                """
+                INSERT INTO delivery_items (
+                    delivery_item_id, sales_order_item_id, delivery_note_number,
+                    posting_date, quantity, unit
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                delivery_rows,
+            )
+
+    print(f"Synchronisierte Aufträge: {len(orders)}")
+    print(f"Synchronisierte Lieferpositionen: {len(delivery_rows)}")
+
+
+if __name__ == "__main__":
+    sync_orders()
