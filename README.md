@@ -4,29 +4,66 @@
 
 Dieses Projekt dient dazu, den Umgang mit einem ERP-System am Beispiel von ERPNext zu üben. Das Ziel ist, Kundenaufträge über die ERPNext-API abzurufen, die Daten mit Python zu filtern und die Ergebnisse in einer Weboberfläche mit React und TypeScript darzustellen.
 
-Die Anwendung zeigt bestellte, gelieferte und offene Mengen pro Auftragsposition. Python importiert Aufträge und gebuchte Lieferpositionen nach PostgreSQL. FastAPI berechnet die offene Menge in der Datenbankabfrage und stellt die Positionen über `/api/orders` bereit. In der Oberfläche lassen sich die Positionen durchsuchen, auf offene Mengen eingrenzen und Entwürfe ausblenden. Ein Klick auf die Auftragsnummer öffnet die Lieferhistorie mit Lieferscheinnummer, Buchungsdatum, Artikel, Menge und Einheit.
+Die Anwendung zeigt bestellte, gelieferte und offene Mengen pro Auftragsposition. Python importiert Aufträge und gebuchte Lieferpositionen nach PostgreSQL. FastAPI berechnet die offene Menge in der Datenbankabfrage und stellt die Positionen über `/api/orders` bereit. In der Oberfläche lassen sich die Positionen durchsuchen, auf offene oder überfällige Positionen eingrenzen, nach Liefertermin sortieren, Entwürfe ausblenden und als CSV-Datei exportieren. Ein Klick auf die Auftragsnummer öffnet die Lieferhistorie mit Lieferscheinnummer, Buchungsdatum, Artikel, Menge und Einheit.
+
+## Funktionen
+
+- **Liefertermin und Überfälligkeit:** Der Import übernimmt den Liefertermin
+  jeder Auftragsposition aus ERPNext (`delivery_date`, ersatzweise den des
+  Auftrags). Eine Position gilt als überfällig, wenn noch eine offene Menge
+  besteht, der Liefertermin vor dem heutigen Datum liegt und der Auftrag
+  nicht den Status Entwurf, Abgeschlossen, Geschlossen oder Storniert hat.
+  FastAPI berechnet das in der Datenbankabfrage.
+- **Filter und Sortierung:** Suche nach Auftragsnummer oder Kunde, Entwürfe
+  ausblenden, nur offene oder nur überfällige Positionen anzeigen, Sortierung
+  nach Auftragsnummer oder Liefertermin.
+- **Kennzahlen:** Über der Tabelle steht, wie viele Positionen angezeigt
+  werden und wie viele davon offen und überfällig sind.
+- **CSV-Export:** Die gefilterte und sortierte Liste lässt sich als CSV-Datei
+  herunterladen. Die Datei verwendet Semikolons, deutsches Datums- und
+  Zahlenformat und UTF-8 mit BOM, damit Excel sie mit deutschen Einstellungen
+  direkt korrekt öffnet.
+- **Datenstand:** Unter der Überschrift steht der Zeitpunkt des letzten
+  erfolgreichen Imports mit `sync_order.py`.
+- **Lieferhistorie:** Ein Klick auf die Auftragsnummer zeigt die gebuchten
+  Lieferscheinpositionen des Auftrags.
+
+### API-Endpunkte
+
+| Endpunkt | Inhalt |
+| --- | --- |
+| `GET /api/orders` | Alle Auftragspositionen mit offener Menge, Liefertermin und `is_overdue` |
+| `GET /api/orders/{auftragsnummer}/deliveries` | Gebuchte Lieferpositionen eines Auftrags |
+| `GET /api/sync-status` | Zeitpunkt des letzten Imports (`synced_at`, `null` falls noch nie importiert) |
 
 ## Screenshots
 
-Die Beispieldaten stammen aus einer ERPNext-Testinstanz.
+Die Beispieldaten stammen aus einer ERPNext-Testinstanz. Für die Screenshots
+wurde der Liefertermin von zwei Positionen auf den 20.11.2026 gesetzt, damit
+eine überfällige Position zu sehen ist.
 
 ### Übersicht der Auftragspositionen
 
-Jede Zeile entspricht einer Auftragsposition. Neben Kunde, Status und Artikel
-zeigt die Tabelle die bestellte, die gelieferte und die noch offene Menge.
-Der ERPNext-Status wird auf Deutsch angezeigt, zum Beispiel `Draft` als
-„Entwurf“.
+Jede Zeile entspricht einer Auftragsposition. Neben Kunde, Status, Artikel
+und Liefertermin zeigt die Tabelle die bestellte, die gelieferte und die noch
+offene Menge. Überfällige Positionen sind rot hinterlegt und tragen den
+Hinweis „überfällig“. Der ERPNext-Status wird auf Deutsch angezeigt, zum
+Beispiel `Draft` als „Entwurf“. Der Auftrag im Status „Entwurf“ gilt trotz
+verstrichenem Liefertermin nicht als überfällig.
 
-![Übersicht aller Auftragspositionen mit bestellter, gelieferter und offener Menge](docs/screenshots/auftragsuebersicht.png)
+![Übersicht aller Auftragspositionen mit Datenstand, Kennzahlen, Liefertermin und einer überfälligen Position](docs/screenshots/auftragsuebersicht.png)
 
-### Filter
+### Filter, Sortierung und Export
 
 Über das Suchfeld lassen sich Positionen nach Auftragsnummer oder Kundenname
 finden. Mit „Entwürfe ausblenden“ verschwinden Aufträge im Status „Entwurf“,
 mit „Nur offene Positionen“ bleiben nur Positionen mit einer offenen Menge
-größer als null sichtbar.
+größer als null sichtbar, mit „Nur überfällige Positionen“ nur überfällige.
+Bei der Sortierung nach Liefertermin stehen die frühesten Termine oben.
+„Als CSV exportieren“ lädt genau die angezeigten Positionen in dieser
+Reihenfolge herunter.
 
-![Auftragspositionen mit aktivierten Filtern „Entwürfe ausblenden“ und „Nur offene Positionen“](docs/screenshots/filter.png)
+![Auftragspositionen ohne Entwürfe, nur offene Positionen, sortiert nach Liefertermin](docs/screenshots/filter.png)
 
 ### Lieferhistorie
 
@@ -103,7 +140,7 @@ timeout 60s bash -c 'until docker compose exec -T postgres sh -c "pg_isready -q 
 ```
 
 Führe die Schemaeinrichtung beim Anlegen einer neuen Datenbank aus.
-Für eine bestehende Datenbank wende nach dem Update einmal `schema.sql` erneut an, um die Tabelle für die Lieferhistorie anzulegen:
+Für eine bestehende Datenbank wende nach jedem Update einmal `schema.sql` erneut an. Das Skript legt fehlende Tabellen und Spalten an, etwa die Tabelle für die Lieferhistorie, die Spalte für den Liefertermin und die Tabelle für den Datenstand. Führe danach `python sync_order.py` aus, damit die Liefertermine importiert werden:
 
 ```bash
 docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d erp_tracker' < schema.sql
@@ -134,7 +171,7 @@ set +a
 
 docker compose up -d
 timeout 60s bash -c 'until docker compose exec -T postgres sh -c "pg_isready -q -h 127.0.0.1 -U \"\$POSTGRES_USER\" -d erp_tracker"; do sleep 1; done' &&
-  python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+  python -m uvicorn main:app --reload --host 127.0.0.1 --port 8001
 ```
 
 ### Terminal 2 im Ordner frontend/
@@ -149,11 +186,11 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 
 Leite in der Ansicht **Ports** von VS Code den Serverport `5173` weiter.
 Öffne die dort angezeigte lokale Adresse im Browser. Vite leitet Anfragen an
-`/api` auf dem Ubuntu-Server standardmäßig an `http://127.0.0.1:8000` weiter.
+`/api` auf dem Ubuntu-Server standardmäßig an `http://127.0.0.1:8001` weiter.
 
 Falls in `frontend/.env.local` ein `API_PROXY_TARGET` gesetzt ist, verwendet
 Vite diese Adresse. Für das oben gezeigte Setup kannst du dort
-`API_PROXY_TARGET=http://127.0.0.1:8000` eintragen. Starte Vite nach einer
+`API_PROXY_TARGET=http://127.0.0.1:8001` eintragen. Starte Vite nach einer
 Änderung an der Datei neu.
 
 ## Aufträge abrufen und aktualisieren

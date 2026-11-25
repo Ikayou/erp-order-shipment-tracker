@@ -7,6 +7,9 @@ from psycopg.rows import dict_row
 
 app = FastAPI(title="ERP Order Shipment Tracker")
 
+# Status, bei denen ein verstrichener Liefertermin nicht als überfällig gilt
+NOT_OVERDUE_STATUSES = ("Draft", "Closed", "Cancelled", "Completed")
+
 
 def connect_to_database():
     return psycopg.connect(
@@ -35,13 +38,31 @@ def get_orders():
                 i.ordered_quantity,
                 i.delivered_quantity,
                 i.ordered_quantity - i.delivered_quantity
-                    AS remaining_quantity
+                    AS remaining_quantity,
+                i.delivery_date,
+                COALESCE(
+                    i.ordered_quantity > i.delivered_quantity
+                    AND i.delivery_date < CURRENT_DATE
+                    AND o.status <> ALL(%s),
+                    FALSE
+                ) AS is_overdue
             FROM sales_orders AS o
             JOIN sales_order_items AS i
                 ON o.order_number = i.order_number
             ORDER BY o.order_number, i.item_code, i.item_id
-            """
+            """,
+            (list(NOT_OVERDUE_STATUSES),),
         ).fetchall()
+
+
+@app.get("/api/sync-status")
+def get_sync_status():
+    # Zeitpunkt des letzten Imports, None falls noch nie importiert wurde
+    with connect_to_database() as connection:
+        row = connection.execute(
+            "SELECT synced_at FROM sync_status WHERE id"
+        ).fetchone()
+        return {"synced_at": row["synced_at"] if row else None}
 
 
 @app.get("/api/orders/{order_number:path}/deliveries")

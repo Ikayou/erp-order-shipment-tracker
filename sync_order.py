@@ -80,9 +80,10 @@ def save_order(connection, order):
                 item_code,
                 item_name,
                 ordered_quantity,
-                delivered_quantity
+                delivered_quantity,
+                delivery_date
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 item["name"],
@@ -91,6 +92,8 @@ def save_order(connection, order):
                 item["item_name"],
                 item["qty"],
                 item["delivered_qty"],
+                # Liefertermin der Position, ersatzweise der des Auftrags
+                item.get("delivery_date") or order.get("delivery_date"),
             ),
         )
 
@@ -156,6 +159,14 @@ def sync_orders():
                 """,
                 delivery_rows,
             )
+
+        connection.execute(
+            """
+            INSERT INTO sync_status (id, synced_at)
+            VALUES (TRUE, now())
+            ON CONFLICT (id) DO UPDATE SET synced_at = EXCLUDED.synced_at
+            """
+        )
 
     print(f"Synchronisierte Aufträge: {len(orders)}")
     print(f"Synchronisierte Lieferpositionen: {len(delivery_rows)}")
