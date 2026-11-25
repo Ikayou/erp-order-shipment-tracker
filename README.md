@@ -6,6 +6,35 @@ Dieses Projekt dient dazu, den Umgang mit einem ERP-System am Beispiel von ERPNe
 
 Die Anwendung zeigt bestellte, gelieferte und offene Mengen pro Auftragsposition. Python importiert Aufträge und gebuchte Lieferpositionen nach PostgreSQL. FastAPI berechnet die offene Menge in der Datenbankabfrage und stellt die Positionen über `/api/orders` bereit. In der Oberfläche lassen sich die Positionen durchsuchen, auf offene Mengen eingrenzen und Entwürfe ausblenden. Ein Klick auf die Auftragsnummer öffnet die Lieferhistorie mit Lieferscheinnummer, Buchungsdatum, Artikel, Menge und Einheit.
 
+## Screenshots
+
+Die Beispieldaten stammen aus einer ERPNext-Testinstanz.
+
+### Übersicht der Auftragspositionen
+
+Jede Zeile entspricht einer Auftragsposition. Neben Kunde, Status und Artikel
+zeigt die Tabelle die bestellte, die gelieferte und die noch offene Menge.
+Der ERPNext-Status wird auf Deutsch angezeigt, zum Beispiel `Draft` als
+„Entwurf“.
+
+![Übersicht aller Auftragspositionen mit bestellter, gelieferter und offener Menge](docs/screenshots/auftragsuebersicht.png)
+
+### Filter
+
+Über das Suchfeld lassen sich Positionen nach Auftragsnummer oder Kundenname
+finden. Mit „Entwürfe ausblenden“ verschwinden Aufträge im Status „Entwurf“,
+mit „Nur offene Positionen“ bleiben nur Positionen mit einer offenen Menge
+größer als null sichtbar.
+
+![Auftragspositionen mit aktivierten Filtern „Entwürfe ausblenden“ und „Nur offene Positionen“](docs/screenshots/filter.png)
+
+### Lieferhistorie
+
+Ein Klick auf eine Auftragsnummer klappt unter der Zeile die gebuchten
+Lieferpositionen dieses Auftrags auf. Ein erneuter Klick schließt sie wieder.
+
+![Aufgeklappte Lieferhistorie für SAL-ORD-2026-00001 mit Lieferschein, Buchungsdatum, Artikel, Menge und Einheit](docs/screenshots/lieferhistorie.png)
+
 ## Entwicklungsumgebung
 
 Das Repository liegt auf einem Ubuntu-Server, der unter Proxmox läuft.
